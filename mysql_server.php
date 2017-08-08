@@ -128,29 +128,28 @@ class MysqlServer
 //        if (empty($sql))
 //            $this->serv->send($fd,'');
 
-        $mysqli->begin(function (swoole_mysql $mysqli,$r)use($fd,$sql,$db){
-            try{
-                $sql1 = "update goods set quality_score=quality_score-1 where Id=1";
-                $mysqli->query($sql1,function (swoole_mysql $mysqli,$r)use($fd,$db){
-                    if ($r === false) {
-                        throw new Exception("It's failed to create order");
-                    }
-                });
-
-                $sql2 = "update orders set parent_order_no='23432' where Id=169";
-                $mysqli->query($sql2,function (swoole_mysql $mysqli,$r)use($fd,$db){
-                    if ($r === false) {
-                        throw new Exception("It's failed to create order");
-                    }
-                });
-                $mysqli->commit(function (swoole_mysql $mysqli,$r)use($fd) {
-                    $this->serv->send($fd, 'Create order successfully!');
-                });
-            }catch (Exception $e){
-                $mysqli->rollback(function (swoole_mysql $mysqli,$r)use($fd,$e) {
-                    $this->serv->send($fd, $e->getMessage());
-                });
-            }
+        $mysqli->query('START TRANSACTION',function (swoole_mysql $mysqli,$r)use($fd,$sql,$db){
+            $sql1 = "update goods set quality_score=quality_score-1 where Id=1";
+            $mysqli->query($sql1,function (swoole_mysql $mysqli,$r)use($fd,$db){
+                if ($r === false) {
+                    $mysqli->query('ROLLBACK',function (swoole_mysql $mysqli,$r)use($fd) {
+                        $this->serv->send($fd, "It's failed to create order");
+                    });
+                }else{
+                    $sql2 = "update orders set parent_order_no='23432' where Id=169";
+                    $mysqli->query($sql2,function (swoole_mysql $mysqli,$r)use($fd,$db){
+                        if ($r === false) {
+                            $mysqli->query('ROLLBACK',function (swoole_mysql $mysqli,$r)use($fd) {
+                                $this->serv->send($fd, "It's failed to create order");
+                            });
+                        }else{
+                            $mysqli->query('COMMIT',function (swoole_mysql $mysqli,$r)use($fd) {
+                                $this->serv->send($fd, 'Create order successfully!');
+                            });
+                        }
+                    });
+                }
+            });
 
             //release mysqli object
             $this->freePool[] = $db;
